@@ -12,6 +12,7 @@ config_version=5
 
 config/name="TrafficSimulator"
 config/version="1.0.0"
+run/main_scene="uid://bfxfg5bvjcmiv"
 config/features=PackedStringArray("4.4", "GL Compatibility")
 config/icon="uid://ct8psjh688e4x"
 
