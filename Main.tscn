@@ -1,0 +1,96 @@
+[gd_scene load_steps=2 format=3 uid="uid://bfxfg5bvjcmiv"]
+
+[ext_resource type="Script" uid="uid://dbia8pot71jwe" path="res://scripts/TrafficSimulator.gd" id="1_glv2v"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_glv2v")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="UI" type="Control" parent="CanvasLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="StartButton" type="Button" parent="CanvasLayer/UI"]
+layout_mode = 0
+offset_right = 8.0
+offset_bottom = 8.0
+
+[node name="SpeedSlider" type="HSlider" parent="CanvasLayer/UI"]
+layout_mode = 0
+offset_right = 8.0
+offset_bottom = 16.0
+
+[node name="LightA" type="VBoxContainer" parent="CanvasLayer/UI"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="GreenSec" type="SpinBox" parent="CanvasLayer/UI/LightA"]
+layout_mode = 2
+
+[node name="RedSec" type="SpinBox" parent="CanvasLayer/UI/LightA"]
+layout_mode = 2
+
+[node name="StartElapsedSec" type="SpinBox" parent="CanvasLayer/UI/LightA"]
+layout_mode = 2
+
+[node name="StartState" type="OptionButton" parent="CanvasLayer/UI/LightA"]
+layout_mode = 2
+
+[node name="LightB" type="VBoxContainer" parent="CanvasLayer/UI"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="GreenSec" type="SpinBox" parent="CanvasLayer/UI/LightB"]
+layout_mode = 2
+
+[node name="RedSec" type="SpinBox" parent="CanvasLayer/UI/LightB"]
+layout_mode = 2
+
+[node name="StartElapsedSec" type="SpinBox" parent="CanvasLayer/UI/LightB"]
+layout_mode = 2
+
+[node name="StartState" type="OptionButton" parent="CanvasLayer/UI/LightB"]
+layout_mode = 2
+
+[node name="LightC" type="VBoxContainer" parent="CanvasLayer/UI"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="GreenSec" type="SpinBox" parent="CanvasLayer/UI/LightC"]
+layout_mode = 2
+
+[node name="RedSec" type="SpinBox" parent="CanvasLayer/UI/LightC"]
+layout_mode = 2
+
+[node name="StartElapsedSec" type="SpinBox" parent="CanvasLayer/UI/LightC"]
+layout_mode = 2
+
+[node name="StartState" type="OptionButton" parent="CanvasLayer/UI/LightC"]
+layout_mode = 2
+
+[node name="LightD" type="VBoxContainer" parent="CanvasLayer/UI"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="GreenSec" type="SpinBox" parent="CanvasLayer/UI/LightD"]
+layout_mode = 2
+
+[node name="RedSec" type="SpinBox" parent="CanvasLayer/UI/LightD"]
+layout_mode = 2
+
+[node name="StartElapsedSec" type="SpinBox" parent="CanvasLayer/UI/LightD"]
+layout_mode = 2
+
+[node name="StartState" type="OptionButton" parent="CanvasLayer/UI/LightD"]
+layout_mode = 2
+
+[node name="ResultDialog" type="AcceptDialog" parent="."]

@@ -1,0 +1,16 @@
+fc8a56933c4b1c8d796fdb8f7a9f9475
+::res://::1761819926
+export_presets.cfg::TextFile/TextFile::-1::1761056472::0::1::::<><><>0<>0<><>::
+icon.svg::CompressedTexture2D/CompressedTexture2D::7139296183185941783::1761025626::1761025648::1::::<><><>0<>0<>ff5d9b8d4196f4eb0ca38235e5a9cc38<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
+Main.tscn::PackedScene::2785161468165471957::1761818609::0::1::::<><><>0<>0<><>::uid://dbia8pot71jwe::::res://scripts/TrafficSimulator.gd
+::res://android/::1761042199
+::res://assets/::1761038873
+car.ico::OtherFile/OtherFile::-1::1761037903::0::1::::<><><>0<>0<><>::
+car.png::CompressedTexture2D/CompressedTexture2D::6175497246552257209::1761033427::1761033458::1::::<><><>0<>0<>4b14b2d5acb6d869fd9692ccc0ecd216<>res://.godot/imported/car.png-d32f5b1402097a8b34a6ade6a9b7d527.ctex::
+logo.ico::OtherFile/OtherFile::-1::1761038873::0::1::::<><><>0<>0<><>::
+::res://scripts/::1761818507
+CarScript.gd::GDScript/GDScript::8567517122132734258::1761815055::0::1::::CarSprite<>Node2D<><>0<>0<><>::
+LightConfig.gd::GDScript/GDScript::2095060068494112644::1761815055::0::1::::LightConfig<>RefCounted<><>0<>0<><>::
+SimulationEngine.gd::GDScript/GDScript::2262900938522393452::1761815055::0::1::::SimulationEngine<>Node<><>0<>0<><>::
+TrafficSimulator.gd::GDScript::7246025658333258180::1761818507::0::1::::<>Node2D<><>0<>0<><>::
+UIManager.gd::GDScript::5454534205913998654::1761817693::0::1::::UIManager<>Node<><>0<>0<><>::
