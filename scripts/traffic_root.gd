@@ -8,6 +8,9 @@ extends Node2D
 @export var speed_min_mps: float = 10.0
 @export var speed_max_mps: float = 40.0
 
+# —— 固定加速倍数 —— 
+@export var default_time_scale: float = 10.0
+
 # —— 车图 —— 
 @export var car_texture_path: String = "res://assets/car.png"
 @export var car_size_px: Vector2 = Vector2(50, 50)
@@ -19,8 +22,6 @@ extends Node2D
 # —— UI 参数 —— 
 @export var ui_row_up_offset: float = 100.0
 @export var show_light_panels: bool = false
-@export_range(8, 96, 1) var timer_font_size_px: int = 32
-@export var timer_font_color: Color = Color(0.2, 0.2, 0.2)
 
 # —— 可视参数 —— 
 @export var road_y: float = 240.0
@@ -38,6 +39,7 @@ const COL_TICK: Color   = Color(0.65, 0.65, 0.65)
 const COL_GREEN: Color  = Color(0.25, 0.85, 0.30)
 const COL_RED: Color    = Color(0.95, 0.20, 0.20)
 const COL_TEXT: Color   = Color(1, 1, 1)
+const COL_LABEL: Color  = Color(0.2, 0.2, 0.2)  # 只给 ABCD 用
 
 # —— 信号灯外观参数 —— 
 @export var light_housing_w: float = 28.0
@@ -46,11 +48,9 @@ const COL_TEXT: Color   = Color(1, 1, 1)
 @export var light_housing_color: Color = Color(0.10, 0.10, 0.12)
 @export var light_pole_color: Color   = Color(0.12, 0.12, 0.12)
 
-# —— 引用 —— 
 @onready var ui: TrafficUI = $CanvasLayer/UI
 @onready var dlg: AcceptDialog = $ResultDialog
 
-# —— 运行时 —— 
 var _sim: TrafficSim
 var _px_per_meter: float = 1.0
 var _intersection_positions: PackedFloat32Array = PackedFloat32Array([0.0, -300.0, -600.0, -900.0])
@@ -59,31 +59,24 @@ var _car_sprite: Sprite2D
 func _ready() -> void:
 	_auto_layout_positions()
 
-	# 1) 仿真对象
 	_sim = TrafficSim.new()
 	_sim.set_speed_mps(speed_default_mps)
+	_sim.set_time_scale(clampf(default_time_scale, 1.0, 10.0))
 
-	# 2) UI 初始化（要在布局之后）
 	ui.set_show_light_panels(show_light_panels)
-	ui.set_timer_style(timer_font_size_px, timer_font_color)
 	ui.layout_for_intersections(_intersection_positions, road_y, tick_size)
 
-	# 3) 同步灯配置到仿真
 	var lights = ui.read_all_lights()
 	_sim.apply_lights(lights)
 	_sim.setup_layout(_intersection_positions, _px_per_meter, road_y)
 
-	# 4) UI 信号
 	ui.start_pressed.connect(_on_ui_start_pressed)
 	ui.lights_changed.connect(_on_ui_lights_changed)
 	ui.speed_changed.connect(_on_ui_speed_changed)
-	ui.timescale_changed.connect(_on_ui_timescale_changed)
 
-	# 5) 车的精灵
 	_car_setup_sprite()
 	_sync_car_visual()
 
-	# 6) 窗口变化
 	if not get_window().size_changed.is_connected(_on_window_size_changed):
 		get_window().size_changed.connect(_on_window_size_changed)
 
@@ -126,17 +119,16 @@ func _auto_layout_positions() -> void:
 func _process(delta: float) -> void:
 	if _sim and _sim.running:
 		var r = _sim.step(delta)
-		ui.update_timer(_sim.t)
 		if r["finished"]:
 			_finish(true)
 	_sync_car_visual()
 	queue_redraw()
 
 func _on_ui_start_pressed() -> void:
-	# UI 改的东西先同步进来
 	var lights = ui.read_all_lights()
 	_sim.apply_lights(lights)
 	_sim.reset()
+	_sim.set_time_scale(clampf(default_time_scale, 1.0, 10.0))
 	_sim.start()
 	ui.set_running(true)
 
@@ -151,21 +143,16 @@ func _on_ui_speed_changed(v: float) -> void:
 	if _sim:
 		_sim.set_speed_mps(clampf(v, speed_min_mps, speed_max_mps))
 
-func _on_ui_timescale_changed(v: float) -> void:
-	if _sim:
-		_sim.set_time_scale(v)
-
 func _finish(success: bool) -> void:
 	if not _sim:
 		return
 	_sim.running = false
 	ui.set_running(false)
-	var total_str = str(snappedf(_sim.t, 0.1))
 	dlg.title = "结果"
 	if success:
-		dlg.dialog_text = "车辆通过！目前总计" + total_str + "秒"
+		dlg.dialog_text = "车辆通过！"
 	else:
-		dlg.dialog_text = "已停止。当前计时：" + total_str + "秒"
+		dlg.dialog_text = "已停止。"
 	dlg.popup_centered()
 
 func _car_setup_sprite() -> void:
@@ -213,7 +200,9 @@ func _draw() -> void:
 	draw_line(Vector2(x0, road_y), Vector2(x1, road_y), COL_ROAD, 3.0)
 
 	var font: Font = ThemeDB.fallback_font
-	var fsize: int = ThemeDB.fallback_font_size
+	var base_size: int = ThemeDB.fallback_font_size
+	var label_size: int = base_size + 4     # ABCD 用
+	var dist_size: int = base_size + 4      # 距离只放大，不改色
 
 	var dist_labels = PackedFloat32Array([0.0, dist_B_from_A_m, dist_C_from_A_m, dist_D_from_A_m])
 
@@ -235,11 +224,25 @@ func _draw() -> void:
 			col = COL_GREEN if int(st["state"]) == LightConfig.LightState.GREEN else COL_RED
 		draw_circle(Vector2(ix, y_bulb), light_bulb_radius, col)
 
-		# 字母标签
-		draw_string(font, Vector2(ix - 6.0, road_y - tick_size - 28.0), str(char(65 + i)),
-			HORIZONTAL_ALIGNMENT_LEFT, -1.0, fsize, COL_TEXT)
+		# 上方 ABCD → 深灰色
+		draw_string(
+			font,
+			Vector2(ix - 6.0, road_y - tick_size - 28.0),
+			str(char(65 + i)),
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			label_size,
+			COL_LABEL
+		)
 
-		# 距离标签
+		# 下方距离 → 只放大，不改色（仍然亮色，便于压住深色背景）
 		var dist_text: String = str(roundi(dist_labels[i])) + " m"
-		draw_string(font, Vector2(ix - 18.0, road_y + tick_size + 16.0), dist_text,
-			HORIZONTAL_ALIGNMENT_LEFT, -1.0, fsize, COL_TEXT)
+		draw_string(
+			font,
+			Vector2(ix - 22.0, road_y + tick_size + 16.0),
+			dist_text,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1.0,
+			dist_size,
+			COL_TEXT
+		)

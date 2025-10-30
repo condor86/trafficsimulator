@@ -1,7 +1,7 @@
 extends RefCounted
 class_name TrafficSim
 
-# —— 布局数据（由外部注入）——
+# —— 布局数据（外部注入）——
 var intersection_positions: PackedFloat32Array = PackedFloat32Array()
 var px_per_meter: float = 1.0
 var road_y: float = 240.0
@@ -49,7 +49,7 @@ func start() -> void:
 	waiting_at_red = false
 	waiting_idx = -1
 
-# 返回值里给你 {finished:bool, t:float, car_x:float}
+# 返回 {finished: bool, t: float, car_x: float}
 func step(delta: float) -> Dictionary:
 	if not running:
 		return {"finished": false, "t": t, "car_x": car_x}
@@ -64,7 +64,7 @@ func step(delta: float) -> Dictionary:
 	var remaining_time: float = scaled_delta
 
 	while remaining_time > 0.0:
-		# 1) 正在等红灯
+		# 1) 等红灯
 		if waiting_at_red:
 			var st_now = lights[waiting_idx].state_at(t)
 			if int(st_now["state"]) == LightConfig.LightState.GREEN:
@@ -78,9 +78,10 @@ func step(delta: float) -> Dictionary:
 				car_x = intersection_positions[waiting_idx]
 				break
 
-		# 2) 要去下一个路口
+		# 2) 去下一个路口
 		var next_idx: int = current_passed_idx + 1
 		if next_idx >= intersection_positions.size():
+			# 已没有路口了
 			car_x -= v_pxps * remaining_time
 			remaining_time = 0.0
 			running = false
@@ -91,23 +92,28 @@ func step(delta: float) -> Dictionary:
 		var max_step_px: float = v_pxps * remaining_time
 
 		if max_step_px < dist_to_stop - 1e-6:
+			# 到不了下一个路口
 			car_x -= max_step_px
 			remaining_time = 0.0
 			break
 		else:
+			# 能到路口，看灯
 			var time_to_stop: float = 0.0
 			if dist_to_stop > 1e-6:
 				time_to_stop = dist_to_stop / v_pxps
 
 			var t_arrive: float = t - (remaining_time - time_to_stop)
 			var st_at_arrive = lights[next_idx].state_at(t_arrive)
+
 			car_x = target_x
 
 			if int(st_at_arrive["state"]) == LightConfig.LightState.RED:
+				# 红灯停
 				waiting_at_red = true
 				waiting_idx = next_idx
 				break
 			else:
+				# 绿灯过
 				current_passed_idx = next_idx
 				remaining_time -= time_to_stop
 				if current_passed_idx == intersection_positions.size() - 1:
