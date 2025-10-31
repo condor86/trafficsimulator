@@ -71,6 +71,7 @@ func _init_sim() -> void:
 	_sim.set_time_scale(clampf(default_time_scale, 1.0, 15.0))
 
 func _init_ui() -> void:
+	# 基础数据给 UI
 	ui.set_show_light_panels(show_light_panels)
 	ui.set_distances_from_root([
 		0.0,
@@ -85,13 +86,35 @@ func _init_ui() -> void:
 		dist_D_from_A_m
 	])
 
+	# 灯配置
 	var lights = ui.read_all_lights()
 	_sim.apply_lights(lights)
+	ui.set_plot_lights(lights)
 
+	# 速度
 	var def_spd := clampf(speed_default_mps, speed_min_mps, speed_max_mps)
 	ui.set_speed_mps(def_spd)
 	_sim.set_speed_mps(def_spd)
 
+	# —— 关键新增：程序一打开就按当前参数锁一次坐标轴 —— 
+	var dists_now: Array = [
+		0.0,
+		dist_B_from_A_m,
+		dist_C_from_A_m,
+		dist_D_from_A_m
+	]
+	var est_dist_max: float = dist_D_from_A_m + 50.0
+	var est_time_max: float = (dist_D_from_A_m + 200.0) / def_spd
+	est_time_max *= 1.25
+	if est_time_max < 30.0:
+		est_time_max = 30.0
+
+	ui.reset_plot()
+	ui.lock_plot_axes(est_time_max, est_dist_max, dists_now)
+	# 初始样本：t=0, d=0, 不等待
+	ui.push_plot_sample_state(0.0, 0.0, false)
+
+	# 信号
 	ui.start_pressed.connect(_on_ui_start_pressed)
 	ui.lights_changed.connect(_on_ui_lights_changed)
 	ui.speed_changed.connect(_on_ui_speed_changed)
@@ -136,14 +159,12 @@ func _process(delta: float) -> void:
 	if _sim and _sim.running:
 		var r = _sim.step(delta)
 
-		# 像素 → 米
 		var car_m: float = 0.0
 		if _intersection_positions.size() > 0:
 			car_m = (_sim.car_x - _intersection_positions[0]) / _px_per_meter
 			if car_m < 0.0:
 				car_m = 0.0
 
-		# ✔ 把“当前是否在等红灯”一并传给 UI
 		var is_waiting: bool = _sim.waiting_at_red
 		ui.push_plot_sample_state(_sim.t, car_m, is_waiting)
 
@@ -169,7 +190,6 @@ func _on_ui_start_pressed() -> void:
 	]
 
 	var est_dist_max: float = dist_D_from_A_m + 50.0
-
 	var est_time_max: float = (dist_D_from_A_m + 200.0) / cur_speed
 	est_time_max *= 1.25
 	if est_time_max < 30.0:
@@ -177,8 +197,10 @@ func _on_ui_start_pressed() -> void:
 
 	ui.reset_plot()
 	ui.lock_plot_axes(est_time_max, est_dist_max, dists_now)
-	# ✔ 起始是绿的（不等待）
 	ui.push_plot_sample_state(0.0, 0.0, false)
+
+	var lights_now = ui.read_all_lights()
+	ui.set_plot_lights(lights_now)
 
 	_sim.reset()
 	_sim.set_time_scale(clampf(default_time_scale, 1.0, 15.0))
@@ -206,7 +228,7 @@ func _apply_ui_to_model() -> void:
 
 	var lights = ui.read_all_lights()
 	_sim.apply_lights(lights)
-
+	ui.set_plot_lights(lights)
 	ui.set_plot_signals([
 		0.0,
 		dist_B_from_A_m,

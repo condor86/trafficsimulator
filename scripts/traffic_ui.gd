@@ -77,17 +77,15 @@ func set_speed_mps(v: float) -> void:
 	if _topbar:
 		_topbar.set_speed_mps(v)
 
-# —— 图表相关：root 用 —— 
+# —— 图表相关 —— 
 func reset_plot() -> void:
 	if _plot:
 		_plot.reset_plot()
 
-# 旧接口：不带状态 → 默认绿
 func push_plot_sample(t_sec: float, dist_m: float) -> void:
 	if _plot:
 		_plot.add_sample(t_sec, dist_m, false)
 
-# 新接口：带是否在等红灯
 func push_plot_sample_state(t_sec: float, dist_m: float, is_waiting_red: bool) -> void:
 	if _plot:
 		_plot.add_sample(t_sec, dist_m, is_waiting_red)
@@ -95,6 +93,11 @@ func push_plot_sample_state(t_sec: float, dist_m: float, is_waiting_red: bool) -
 func set_plot_signals(dists: Array) -> void:
 	if _plot:
 		_plot.set_signal_distances(dists)
+
+# ✔ 新增：把灯配置也传给图像
+func set_plot_lights(lights: Array) -> void:
+	if _plot:
+		_plot.set_light_configs(lights)
 
 func lock_plot_axes(max_time: float, max_dist: float, dists: Array) -> void:
 	if _plot:

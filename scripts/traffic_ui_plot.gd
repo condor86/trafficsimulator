@@ -1,9 +1,12 @@
 extends Control
 class_name TrafficUIPlot
 
-# 每个样本：{ "t": float, "d": float, "red": bool }
+# 样本：(t, d, red)
 var _samples: Array = []
+# 距离刻度
 var _signal_dists: PackedFloat32Array = PackedFloat32Array()
+# 对应每个距离的红绿灯配置
+var _lights: Array = []
 
 var _max_time: float = 30.0
 var _max_dist: float = 10.0
@@ -19,9 +22,13 @@ var _axes_locked: bool = false
 const SPLIT_10_TO_20: float = 140.0
 const SPLIT_20_TO_50: float = 200.0
 
-# 用和 traffic_root 里一致的颜色
+# 曲线颜色（和主画面一致）
 const COL_LINE_GREEN := Color(0.25, 0.85, 0.30, 0.95)
 const COL_LINE_RED   := Color(0.95, 0.20, 0.20, 0.95)
+
+# ✔ 背景灯线：更深 / 更透明（25%）
+const COL_BG_GREEN := Color(0.16, 0.55, 0.18, 0.25)
+const COL_BG_RED   := Color(0.55, 0.10, 0.10, 0.25)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -68,6 +75,11 @@ func set_signal_distances(dists: Array) -> void:
 		if fv > maxv:
 			maxv = fv
 	_max_dist = max(_max_dist, maxv + 10.0)
+	queue_redraw()
+
+# 接受灯配置（A/B/C/D 对应的 LightConfig）
+func set_light_configs(lights: Array) -> void:
+	_lights = lights.duplicate()
 	queue_redraw()
 
 # 带状态的新增入口
@@ -119,17 +131,37 @@ func _draw() -> void:
 		_draw_x_tick(font, x_pos, origin.y, int(t0))
 		t0 += step_x
 
-	# —— 纵轴刻度：A/B/C/D —— 
-	for i in range(_signal_dists.size()):
+	# —— 背景：按灯节奏的彩色线 —— 
+	var count_lines: int = min(_signal_dists.size(), _lights.size())
+	for i in range(count_lines):
 		var d: float = _signal_dists[i]
+		var lc: LightConfig = _lights[i]
 		var y_rel: float = (d / _max_dist) if _max_dist > 1e-6 else 0.0
 		var y_pos: float = origin.y - y_rel * plot_h
-		draw_line(
-			Vector2(origin.x - 4.0, y_pos),
-			Vector2(origin.x + plot_w, y_pos),
-			Color(1, 1, 1, 0.25),
-			1.0
-		)
+
+		var cur_t: float = 0.0
+		while cur_t < _max_time - 1e-5:
+			var st: Dictionary = lc.state_at(cur_t)
+			var remain: float = float(st["remain"])
+			var seg_end_t: float = cur_t + remain
+			if seg_end_t > _max_time:
+				seg_end_t = _max_time
+
+			var x0: float = origin.x + (cur_t / _max_time) * plot_w
+			var x1: float = origin.x + (seg_end_t / _max_time) * plot_w
+
+			var col_bg: Color = COL_BG_GREEN
+			if int(st["state"]) == LightConfig.LightState.RED:
+				col_bg = COL_BG_RED
+
+			if x1 - x0 > 0.5:
+				draw_line(Vector2(x0, y_pos), Vector2(x1, y_pos), col_bg, 2.0)
+			else:
+				draw_line(Vector2(x0, y_pos), Vector2(x0 + 1.0, y_pos), col_bg, 2.0)
+
+			cur_t = seg_end_t
+
+		# 标签
 		var label := "A"
 		if i == 1: label = "B"
 		elif i == 2: label = "C"
@@ -144,7 +176,7 @@ func _draw() -> void:
 			Color(1, 1, 1, 0.8)
 		)
 
-	# —— 曲线：按段着色 —— 
+	# —— 曲线：分段着色 —— 
 	if _samples.size() >= 2:
 		for i in range(_samples.size() - 1):
 			var a: Dictionary = _samples[i]

@@ -16,8 +16,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("2_0xm2m")
-speed_min_mps = null
-speed_max_mps = null
 
 [node name="StartButton" type="Button" parent="CanvasLayer/UI"]
 layout_mode = 0
