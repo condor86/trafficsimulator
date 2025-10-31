@@ -17,15 +17,13 @@ extends Node2D
 @export var car_flip_h: bool = true
 @export var car_flip_v: bool = false
 
-@export var ui_row_up_offset: float = 100.0
 @export var show_light_panels: bool = false
 
 @export var road_y: float = 240.0
-@export var road_length: float = 1000.0
 @export var road_x_start: float = 100.0
+@export var road_length: float = 1000.0
 @export var tick_size: float = 16.0
 @export var light_bulb_radius: float = 8.0
-@export var car_radius: float = 6.0
 
 const COL_SKY: Color    = Color(0.45, 0.75, 1.00)
 const COL_GROUND: Color = Color(0.08, 0.08, 0.09)
@@ -42,31 +40,41 @@ const COL_LABEL: Color  = Color(0.2, 0.2, 0.2)
 @export var light_pole_color: Color   = Color(0.12, 0.12, 0.12)
 
 const LIGHT_SCALE := 1.5
-
-# 新增：距离约束（这里可以保留，但不再做“全行回推”）
 const DIST_MIN_GAP := 50.0
 const DIST_MAX_D := 3000.0
 
-@onready var ui = $CanvasLayer/UI
+@onready var ui: TrafficUI = $CanvasLayer/UI
 @onready var dlg: AcceptDialog = $ResultDialog
 
 var _sim: TrafficSim
 var _px_per_meter: float = 1.0
 var _intersection_positions: PackedFloat32Array = PackedFloat32Array([0.0, 300.0, 600.0, 900.0])
 var _car_sprite: Sprite2D
-
 var _waiting_dialog_unlock: bool = false
 
 func _ready() -> void:
-	_auto_layout_positions()
+	_init_sim()
+	_init_ui()
+	_refresh_layout()
+	_sync_car_visual()
 
+	if not dlg.confirmed.is_connected(_on_result_confirmed):
+		dlg.confirmed.connect(_on_result_confirmed)
+	if not get_window().size_changed.is_connected(_on_window_size_changed):
+		get_window().size_changed.connect(_on_window_size_changed)
+
+	queue_redraw()
+
+func _init_sim() -> void:
 	_sim = TrafficSim.new()
 	_sim.set_speed_mps(speed_default_mps)
 	_sim.set_time_scale(clampf(default_time_scale, 1.0, 15.0))
 
+func _init_ui() -> void:
+	# 1) 显示 / 隐藏下面那张表
 	ui.set_show_light_panels(show_light_panels)
-	ui.layout_for_intersections(_intersection_positions, road_y, tick_size)
 
+	# 2) 把距离灌进去
 	ui.set_distances_from_root([
 		0.0,
 		dist_B_from_A_m,
@@ -74,29 +82,30 @@ func _ready() -> void:
 		dist_D_from_A_m
 	])
 
+	# 3) 灯配置
 	var lights = ui.read_all_lights()
 	_sim.apply_lights(lights)
-	_sim.setup_layout(_intersection_positions, _px_per_meter, road_y)
 
+	# 4) 速度 → 不能再碰 ui.speed_slider / ui.speed_input 了
+	var def_spd := clampf(speed_default_mps, speed_min_mps, speed_max_mps)
+	ui.set_speed_mps(def_spd)
+	_sim.set_speed_mps(def_spd)
+
+	# 5) 信号
 	ui.start_pressed.connect(_on_ui_start_pressed)
 	ui.lights_changed.connect(_on_ui_lights_changed)
 	ui.speed_changed.connect(_on_ui_speed_changed)
 
 	_car_setup_sprite()
-	_sync_car_visual()
-
-	if not dlg.confirmed.is_connected(_on_result_confirmed):
-		dlg.confirmed.connect(_on_result_confirmed)
-
-	if not get_window().size_changed.is_connected(_on_window_size_changed):
-		get_window().size_changed.connect(_on_window_size_changed)
-
-	queue_redraw()
 
 func _on_window_size_changed() -> void:
+	_refresh_layout()
+	queue_redraw()
+
+func _refresh_layout() -> void:
 	_auto_layout_positions()
 	ui.layout_for_intersections(_intersection_positions, road_y, tick_size)
-	queue_redraw()
+	_sim.setup_layout(_intersection_positions, _px_per_meter, road_y)
 
 func _auto_layout_positions() -> void:
 	var sz: Vector2 = get_viewport().get_visible_rect().size
@@ -110,6 +119,7 @@ func _auto_layout_positions() -> void:
 	var max_dist: float = maxf(dists[0], maxf(dists[1], maxf(dists[2], dists[3])))
 	if max_dist <= 0.0:
 		max_dist = 1.0
+
 	_px_per_meter = usable_w / max_dist
 
 	var center_x: float = sz.x * 0.5
@@ -119,13 +129,8 @@ func _auto_layout_positions() -> void:
 	road_length  = usable_w + 40.0
 
 	_intersection_positions.resize(4)
-	_intersection_positions[0] = x_left + dists[0] * _px_per_meter
-	_intersection_positions[1] = x_left + dists[1] * _px_per_meter
-	_intersection_positions[2] = x_left + dists[2] * _px_per_meter
-	_intersection_positions[3] = x_left + dists[3] * _px_per_meter
-
-	if _sim:
-		_sim.setup_layout(_intersection_positions, _px_per_meter, road_y)
+	for i in range(4):
+		_intersection_positions[i] = x_left + dists[i] * _px_per_meter
 
 func _process(delta: float) -> void:
 	if _sim and _sim.running:
@@ -136,56 +141,36 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _on_ui_start_pressed() -> void:
-	var dists_from_ui = ui.read_all_distances()
-	_apply_distances_from_ui(dists_from_ui)
-
-	var lights = ui.read_all_lights()
-	_sim.apply_lights(lights)
-
-	var ui_speed: float = ui.get_speed_mps()
-	var clamped_speed: float = clampf(ui_speed, speed_min_mps, speed_max_mps)
-	_sim.set_speed_mps(clamped_speed)
-
+	_apply_ui_to_model()
 	_sim.reset()
 	_sim.set_time_scale(clampf(default_time_scale, 1.0, 15.0))
 	_sim.start()
-
 	ui.set_running(true)
 	_waiting_dialog_unlock = false
 
 func _on_ui_lights_changed() -> void:
 	if _sim and not _sim.running:
-		var lights = ui.read_all_lights()
-		_sim.apply_lights(lights)
-
-		var dists_from_ui = ui.read_all_distances()
-		_apply_distances_from_ui(dists_from_ui)
-
+		_apply_ui_to_model()
 		queue_redraw()
 
 func _on_ui_speed_changed(v: float) -> void:
 	if _sim and not _sim.running:
 		_sim.set_speed_mps(clampf(v, speed_min_mps, speed_max_mps))
 
-# ✔ 关键改动：不再做“全行级联回推”，只吃 UI 的数值
-func _apply_distances_from_ui(dists: Array) -> void:
-	if dists.size() < 4:
-		return
+func _apply_ui_to_model() -> void:
+	var dists = ui.read_all_distances()
+	if dists.size() >= 4:
+		dist_B_from_A_m = clampf(float(dists[1]), 0.0 + DIST_MIN_GAP, DIST_MAX_D)
+		dist_C_from_A_m = clampf(float(dists[2]), dist_B_from_A_m + DIST_MIN_GAP, DIST_MAX_D)
+		dist_D_from_A_m = clampf(float(dists[3]), dist_C_from_A_m + DIST_MIN_GAP, DIST_MAX_D)
 
-	# A 永远是 0
-	dist_B_from_A_m = float(dists[1])
-	dist_C_from_A_m = float(dists[2])
-	dist_D_from_A_m = float(dists[3])
+	_refresh_layout()
 
-	# 这里如果你担心 UI 给了一个特别离谱的，就只做硬边界，不做连锁：
-	dist_B_from_A_m = clampf(dist_B_from_A_m, 0.0 + DIST_MIN_GAP, DIST_MAX_D)
-	dist_C_from_A_m = clampf(dist_C_from_A_m, dist_B_from_A_m + DIST_MIN_GAP, DIST_MAX_D)
-	dist_D_from_A_m = clampf(dist_D_from_A_m, dist_C_from_A_m + DIST_MIN_GAP, DIST_MAX_D)
+	var lights = ui.read_all_lights()
+	_sim.apply_lights(lights)
 
-	_auto_layout_positions()
-	ui.layout_for_intersections(_intersection_positions, road_y, tick_size)
-	if _sim:
-		_sim.setup_layout(_intersection_positions, _px_per_meter, road_y)
+	var ui_speed: float = ui.get_speed_mps()
+	_sim.set_speed_mps(clampf(ui_speed, speed_min_mps, speed_max_mps))
 
 func _finish(success: bool) -> void:
 	if not _sim:
@@ -194,10 +179,7 @@ func _finish(success: bool) -> void:
 	_waiting_dialog_unlock = true
 
 	dlg.title = "结果"
-	if success:
-		dlg.dialog_text = "车辆通过！"
-	else:
-		dlg.dialog_text = "已停止。"
+	dlg.dialog_text = "车辆通过！" if success else "已停止。"
 	dlg.popup_centered()
 
 func _on_result_confirmed() -> void:
@@ -221,12 +203,8 @@ func _car_setup_sprite() -> void:
 func _car_apply_size_and_transform() -> void:
 	if not _car_sprite or not _car_sprite.texture:
 		return
-	var tw: float = float(_car_sprite.texture.get_width())
-	var th: float = float(_car_sprite.texture.get_height())
-	if tw <= 0.0:
-		tw = 1.0
-	if th <= 0.0:
-		th = 1.0
+	var tw: float = maxf(float(_car_sprite.texture.get_width()), 1.0)
+	var th: float = maxf(float(_car_sprite.texture.get_height()), 1.0)
 	_car_sprite.scale = Vector2(car_size_px.x / tw, car_size_px.y / th)
 	_car_sprite.rotation = 0.0
 	if car_face_left:
@@ -237,30 +215,29 @@ func _car_apply_size_and_transform() -> void:
 
 func _sync_car_visual() -> void:
 	if _car_sprite and _sim:
-		_car_sprite.position = Vector2(
-			_sim.car_x - car_size_px.x * 0.5,
-			road_y
-		)
+		_car_sprite.position = Vector2(_sim.car_x - car_size_px.x * 0.5, road_y)
 
 func _draw() -> void:
+	_draw_background()
+	_draw_road()
+	_draw_lights_and_labels()
+
+func _draw_background() -> void:
 	var sz: Vector2 = get_viewport().get_visible_rect().size
 	var mid_y: float = floor(sz.y * 0.5)
 	draw_rect(Rect2(Vector2(0, 0), Vector2(sz.x, mid_y)), COL_SKY, true)
 	draw_rect(Rect2(Vector2(0, mid_y), Vector2(sz.x, sz.y - mid_y)), COL_GROUND, true)
 
-	var x0: float = road_x_start
-	var x1: float = road_x_start + road_length
-	draw_line(Vector2(x0, road_y), Vector2(x1, road_y), COL_ROAD, 3.0)
+func _draw_road() -> void:
+	draw_line(Vector2(road_x_start, road_y), Vector2(road_x_start + road_length, road_y), COL_ROAD, 3.0)
 
+func _draw_lights_and_labels() -> void:
 	var font: Font = ThemeDB.fallback_font
 	var abcd_size: int = 28
 	var dist_size: int = 26
-
 	var dist_labels = PackedFloat32Array([0.0, dist_B_from_A_m, dist_C_from_A_m, dist_D_from_A_m])
 
-	var t_for_lights: float = 0.0
-	if _sim:
-		t_for_lights = _sim.t
+	var t_for_lights: float = _sim.t if _sim else 0.0
 
 	for i in range(_intersection_positions.size()):
 		var ix: float = _intersection_positions[i]
@@ -290,11 +267,10 @@ func _draw() -> void:
 			COL_LABEL
 		)
 
-		var dist_text: String = str(roundi(dist_labels[i])) + " m"
 		draw_string(
 			font,
 			Vector2(ix - 34.0, road_y + tick_size + 30.0),
-			dist_text,
+			str(roundi(dist_labels[i])) + " m",
 			HORIZONTAL_ALIGNMENT_LEFT,
 			-1.0,
 			dist_size,

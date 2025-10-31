@@ -10,6 +10,7 @@ var start_state: int
 var start_elapsed: float
 
 func _init(g: float, r: float, st: int, el: float) -> void:
+	# 基础防护，防止 0 秒
 	green_sec = maxf(g, 0.1)
 	red_sec = maxf(r, 0.1)
 	start_state = st
@@ -24,6 +25,12 @@ func _start_offset_in_cycle() -> float:
 		offset += green_sec
 	return fmod(offset, cycle())
 
+# 返回：
+# {
+#   "state": LightState.GREEN / LightState.RED,
+#   "elapsed": 当前状态已运行时间,
+#   "remain":  当前状态剩余时间
+# }
 func state_at(t: float) -> Dictionary:
 	var T: float = cycle()
 	var x: float = fmod(_start_offset_in_cycle() + maxf(t, 0.0), T)

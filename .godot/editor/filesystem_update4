@@ -1,4 +1,7 @@
 res://main.tscn
-res://scripts/traffic_root.gd
 res://scripts/traffic_ui.gd
+res://scripts/light_config.gd
 res://scripts/traffic_sim.gd
+res://scripts/traffic_root.gd
+res://scripts/traffic_ui_lighttable.gd
+res://scripts/traffic_ui_topbar.gd
