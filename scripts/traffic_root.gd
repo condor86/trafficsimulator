@@ -43,7 +43,7 @@ const COL_LABEL: Color  = Color(0.2, 0.2, 0.2)
 
 const LIGHT_SCALE := 1.5
 
-# 新增：距离约束
+# 新增：距离约束（这里可以保留，但不再做“全行回推”）
 const DIST_MIN_GAP := 50.0
 const DIST_MAX_D := 3000.0
 
@@ -67,7 +67,6 @@ func _ready() -> void:
 	ui.set_show_light_panels(show_light_panels)
 	ui.layout_for_intersections(_intersection_positions, road_y, tick_size)
 
-	# 把当前导出的 ABCD 距离回写给 UI，保证一致
 	ui.set_distances_from_root([
 		0.0,
 		dist_B_from_A_m,
@@ -137,7 +136,6 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _on_ui_start_pressed() -> void:
-	# 开始之前再读一遍 UI 的距离，做一次兜底
 	var dists_from_ui = ui.read_all_distances()
 	_apply_distances_from_ui(dists_from_ui)
 
@@ -156,12 +154,10 @@ func _on_ui_start_pressed() -> void:
 	_waiting_dialog_unlock = false
 
 func _on_ui_lights_changed() -> void:
-	# 不在运行时才能变
 	if _sim and not _sim.running:
 		var lights = ui.read_all_lights()
 		_sim.apply_lights(lights)
 
-		# ★ 新增：读位置并应用
 		var dists_from_ui = ui.read_all_distances()
 		_apply_distances_from_ui(dists_from_ui)
 
@@ -171,33 +167,21 @@ func _on_ui_speed_changed(v: float) -> void:
 	if _sim and not _sim.running:
 		_sim.set_speed_mps(clampf(v, speed_min_mps, speed_max_mps))
 
+# ✔ 关键改动：不再做“全行级联回推”，只吃 UI 的数值
 func _apply_distances_from_ui(dists: Array) -> void:
 	if dists.size() < 4:
 		return
 
-	var a := 0.0
-	var b := float(dists[1])
-	var c := float(dists[2])
-	var d := float(dists[3])
+	# A 永远是 0
+	dist_B_from_A_m = float(dists[1])
+	dist_C_from_A_m = float(dists[2])
+	dist_D_from_A_m = float(dists[3])
 
-	# 和 UI 一样的规则，再夹一遍
-	b = maxf(b, a + DIST_MIN_GAP)
-	c = maxf(c, b + DIST_MIN_GAP)
-	d = maxf(d, c + DIST_MIN_GAP)
-	d = minf(d, DIST_MAX_D)
+	# 这里如果你担心 UI 给了一个特别离谱的，就只做硬边界，不做连锁：
+	dist_B_from_A_m = clampf(dist_B_from_A_m, 0.0 + DIST_MIN_GAP, DIST_MAX_D)
+	dist_C_from_A_m = clampf(dist_C_from_A_m, dist_B_from_A_m + DIST_MIN_GAP, DIST_MAX_D)
+	dist_D_from_A_m = clampf(dist_D_from_A_m, dist_C_from_A_m + DIST_MIN_GAP, DIST_MAX_D)
 
-	if c > d - DIST_MIN_GAP:
-		c = d - DIST_MIN_GAP
-	if b > c - DIST_MIN_GAP:
-		b = c - DIST_MIN_GAP
-	b = maxf(b, a + DIST_MIN_GAP)
-
-	# 更新导出量
-	dist_B_from_A_m = b
-	dist_C_from_A_m = c
-	dist_D_from_A_m = d
-
-	# 重新布局 + 同步 UI + 同步模拟
 	_auto_layout_positions()
 	ui.layout_for_intersections(_intersection_positions, road_y, tick_size)
 	if _sim:
@@ -274,7 +258,6 @@ func _draw() -> void:
 
 	var dist_labels = PackedFloat32Array([0.0, dist_B_from_A_m, dist_C_from_A_m, dist_D_from_A_m])
 
-	# 用当前 _sim.t 来算灯的状态，避免结束那一帧回到 0
 	var t_for_lights: float = 0.0
 	if _sim:
 		t_for_lights = _sim.t
@@ -297,7 +280,6 @@ func _draw() -> void:
 			col = COL_GREEN if int(st["state"]) == LightConfig.LightState.GREEN else COL_RED
 		draw_circle(Vector2(ix, y_bulb), light_bulb_radius * LIGHT_SCALE, col)
 
-		# ABCD 标签
 		draw_string(
 			font,
 			Vector2(ix - 10.0, y_bulb - (16.0 * LIGHT_SCALE)),
@@ -308,7 +290,6 @@ func _draw() -> void:
 			COL_LABEL
 		)
 
-		# 距离标签
 		var dist_text: String = str(roundi(dist_labels[i])) + " m"
 		draw_string(
 			font,
