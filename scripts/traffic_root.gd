@@ -78,7 +78,6 @@ func _init_ui() -> void:
 		dist_C_from_A_m,
 		dist_D_from_A_m
 	])
-	# 同步到图表
 	ui.set_plot_signals([
 		0.0,
 		dist_B_from_A_m,
@@ -137,15 +136,16 @@ func _process(delta: float) -> void:
 	if _sim and _sim.running:
 		var r = _sim.step(delta)
 
-		# 计算当前车的“米数”
+		# 像素 → 米
 		var car_m: float = 0.0
 		if _intersection_positions.size() > 0:
 			car_m = (_sim.car_x - _intersection_positions[0]) / _px_per_meter
 			if car_m < 0.0:
 				car_m = 0.0
 
-		# 推给图表
-		ui.push_plot_sample(_sim.t, car_m)
+		# ✔ 把“当前是否在等红灯”一并传给 UI
+		var is_waiting: bool = _sim.waiting_at_red
+		ui.push_plot_sample_state(_sim.t, car_m, is_waiting)
 
 		if r["finished"]:
 			_finish(true)
@@ -155,9 +155,30 @@ func _process(delta: float) -> void:
 
 func _on_ui_start_pressed() -> void:
 	_apply_ui_to_model()
-	# 图表清空并从 (0,0) 开始
+
+	var cur_speed: float = ui.get_speed_mps()
+	cur_speed = clampf(cur_speed, speed_min_mps, speed_max_mps)
+	if cur_speed <= 0.01:
+		cur_speed = speed_min_mps
+
+	var dists_now: Array = [
+		0.0,
+		dist_B_from_A_m,
+		dist_C_from_A_m,
+		dist_D_from_A_m
+	]
+
+	var est_dist_max: float = dist_D_from_A_m + 50.0
+
+	var est_time_max: float = (dist_D_from_A_m + 200.0) / cur_speed
+	est_time_max *= 1.25
+	if est_time_max < 30.0:
+		est_time_max = 30.0
+
 	ui.reset_plot()
-	ui.push_plot_sample(0.0, 0.0)
+	ui.lock_plot_axes(est_time_max, est_dist_max, dists_now)
+	# ✔ 起始是绿的（不等待）
+	ui.push_plot_sample_state(0.0, 0.0, false)
 
 	_sim.reset()
 	_sim.set_time_scale(clampf(default_time_scale, 1.0, 15.0))

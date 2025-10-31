@@ -1,13 +1,12 @@
 extends Control
 class_name TrafficUIPlot
 
-# 实时曲线：x = 时间(s)，y = 距离(m)
-
-var _samples: Array[Vector2] = []               # (t, d)
+# 每个样本：{ "t": float, "d": float, "red": bool }
+var _samples: Array = []
 var _signal_dists: PackedFloat32Array = PackedFloat32Array()
 
-var _max_time: float = 30.0                     # 锁轴后固定的横轴范围
-var _max_dist: float = 10.0                     # 锁轴后固定的纵轴范围
+var _max_time: float = 30.0
+var _max_dist: float = 10.0
 
 var _plot_size: Vector2 = Vector2(360, 200)
 var _margin_left: float = 48.0
@@ -15,12 +14,14 @@ var _margin_right: float = 12.0
 var _margin_top: float = 18.0
 var _margin_bottom: float = 28.0
 
-# 是否已锁轴（按“开始”之后为 true）
 var _axes_locked: bool = false
 
-# 分段阈值
 const SPLIT_10_TO_20: float = 140.0
 const SPLIT_20_TO_50: float = 200.0
+
+# 用和 traffic_root 里一致的颜色
+const COL_LINE_GREEN := Color(0.25, 0.85, 0.30, 0.95)
+const COL_LINE_RED   := Color(0.95, 0.20, 0.20, 0.95)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -37,7 +38,6 @@ func reset_plot() -> void:
 	_samples.clear()
 	queue_redraw()
 
-# root 在“开始”时调用：一次性固定坐标系
 func lock_axes(max_time: float, max_dist: float, dists: Array) -> void:
 	_axes_locked = true
 	_max_time = max(max_time, 1.0)
@@ -48,12 +48,10 @@ func lock_axes(max_time: float, max_dist: float, dists: Array) -> void:
 		_signal_dists.append(float(v))
 	queue_redraw()
 
-# 可选：root 在不跑时想恢复自适应
 func unlock_axes() -> void:
 	_axes_locked = false
 	queue_redraw()
 
-# 未锁轴时，允许 UI 的距离变动去影响纵轴
 func set_signal_distances(dists: Array) -> void:
 	if _axes_locked:
 		_signal_dists = PackedFloat32Array()
@@ -72,8 +70,14 @@ func set_signal_distances(dists: Array) -> void:
 	_max_dist = max(_max_dist, maxv + 10.0)
 	queue_redraw()
 
-func add_sample(t_sec: float, dist_m: float) -> void:
-	_samples.append(Vector2(t_sec, dist_m))
+# 带状态的新增入口
+func add_sample(t_sec: float, dist_m: float, is_red: bool) -> void:
+	var rec := {
+		"t": float(t_sec),
+		"d": float(dist_m),
+		"red": bool(is_red)
+	}
+	_samples.append(rec)
 
 	if not _axes_locked:
 		if t_sec > _max_time - 1.0:
@@ -85,9 +89,7 @@ func add_sample(t_sec: float, dist_m: float) -> void:
 
 func _draw() -> void:
 	var rect := Rect2(Vector2.ZERO, size)
-	# 背景
 	draw_rect(rect, Color(0, 0, 0, 0.45), true)
-	# 边框
 	draw_rect(rect, Color(1, 1, 1, 0.45), false, 1.0)
 
 	var plot_w: float = rect.size.x - _margin_left - _margin_right
@@ -103,13 +105,13 @@ func _draw() -> void:
 
 	var font: Font = ThemeDB.fallback_font
 
-	# —— 横轴刻度：分三档，全覆盖重画 ——
+	# —— 横轴刻度：三档，全覆盖 —— 
 	var step_x: float = 10.0
 	if _max_time > SPLIT_20_TO_50 + 0.1:
 		step_x = 50.0
 	elif _max_time > SPLIT_10_TO_20 + 0.1:
 		step_x = 20.0
-	# 现在从 0 一路画到 _max_time
+
 	var t0: float = 0.0
 	while t0 <= _max_time + 0.1:
 		var x_rel: float = (t0 / _max_time) * plot_w
@@ -142,23 +144,31 @@ func _draw() -> void:
 			Color(1, 1, 1, 0.8)
 		)
 
-	# —— 曲线 —— 
+	# —— 曲线：按段着色 —— 
 	if _samples.size() >= 2:
-		var pts: PackedVector2Array = PackedVector2Array()
-		for s: Vector2 in _samples:
-			var sx: float = s.x
-			var sy: float = s.y
-			var xx: float = origin.x + (sx / _max_time) * plot_w
-			var yy: float = origin.y - (sy / _max_dist) * plot_h
-			pts.append(Vector2(xx, yy))
-		draw_polyline(pts, Color(0.2, 1.0, 0.3, 0.95), 2.0, true)
-	elif _samples.size() == 1:
-		var s0: Vector2 = _samples[0]
-		var xx0: float = origin.x + (s0.x / _max_time) * plot_w
-		var yy0: float = origin.y - (s0.y / _max_dist) * plot_h
-		draw_circle(Vector2(xx0, yy0), 2.0, Color(0.2, 1.0, 0.3, 0.95))
+		for i in range(_samples.size() - 1):
+			var a: Dictionary = _samples[i]
+			var b: Dictionary = _samples[i + 1]
 
-# 小工具：画一个横轴刻度 + 标签
+			var ax: float = origin.x + (a["t"] / _max_time) * plot_w
+			var ay: float = origin.y - (a["d"] / _max_dist) * plot_h
+			var bx: float = origin.x + (b["t"] / _max_time) * plot_w
+			var by: float = origin.y - (b["d"] / _max_dist) * plot_h
+
+			var col: Color = COL_LINE_GREEN
+			if bool(a["red"]):
+				col = COL_LINE_RED
+
+			draw_line(Vector2(ax, ay), Vector2(bx, by), col, 2.0)
+	elif _samples.size() == 1:
+		var s0: Dictionary = _samples[0]
+		var xx0: float = origin.x + (s0["t"] / _max_time) * plot_w
+		var yy0: float = origin.y - (s0["d"] / _max_dist) * plot_h
+		var col0: Color = COL_LINE_GREEN
+		if bool(s0["red"]):
+			col0 = COL_LINE_RED
+		draw_circle(Vector2(xx0, yy0), 2.0, col0)
+
 func _draw_x_tick(font: Font, x_pos: float, base_y: float, label_val: int) -> void:
 	draw_line(
 		Vector2(x_pos, base_y),
