@@ -6,9 +6,8 @@ class_name TrafficUIPlot
 var _samples: Array[Vector2] = []               # (t, d)
 var _signal_dists: PackedFloat32Array = PackedFloat32Array()
 
-var _min_x_step: float = 10.0                   # 横轴刻度
-var _max_time: float = 30.0                     # 当前坐标系的最大时间
-var _max_dist: float = 10.0                     # 当前坐标系的最大距离
+var _max_time: float = 30.0                     # 锁轴后固定的横轴范围
+var _max_dist: float = 10.0                     # 锁轴后固定的纵轴范围
 
 var _plot_size: Vector2 = Vector2(360, 200)
 var _margin_left: float = 48.0
@@ -16,8 +15,12 @@ var _margin_right: float = 12.0
 var _margin_top: float = 18.0
 var _margin_bottom: float = 28.0
 
-# ✔ 新增：轴是否已锁定
+# 是否已锁轴（按“开始”之后为 true）
 var _axes_locked: bool = false
+
+# 分段阈值
+const SPLIT_10_TO_20: float = 140.0
+const SPLIT_20_TO_50: float = 200.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -30,39 +33,35 @@ func layout_for_intersections(road_y: float, tick_size: float) -> void:
 	size = _plot_size
 	queue_redraw()
 
-# 仅清曲线，坐标系不一定清 → 方便和“锁轴”配合
 func reset_plot() -> void:
 	_samples.clear()
 	queue_redraw()
 
-# ✔ 新增：在开始那一刻由 root 调用，固定坐标系
+# root 在“开始”时调用：一次性固定坐标系
 func lock_axes(max_time: float, max_dist: float, dists: Array) -> void:
 	_axes_locked = true
 	_max_time = max(max_time, 1.0)
 	_max_dist = max(max_dist, 1.0)
 
-	# 锁的时候也要把 A/B/C/D 同步进去，但不能再据此改 _max_dist
 	_signal_dists = PackedFloat32Array()
 	for v in dists:
 		_signal_dists.append(float(v))
 	queue_redraw()
 
-# 可选：root 不跑的时候想恢复成“自适应”
+# 可选：root 在不跑时想恢复自适应
 func unlock_axes() -> void:
 	_axes_locked = false
 	queue_redraw()
 
-# UI 在未运行时改距离会走到这里
+# 未锁轴时，允许 UI 的距离变动去影响纵轴
 func set_signal_distances(dists: Array) -> void:
 	if _axes_locked:
-		# 轴已锁，只换标签，不改范围
 		_signal_dists = PackedFloat32Array()
 		for v in dists:
 			_signal_dists.append(float(v))
 		queue_redraw()
 		return
 
-	# 未锁轴 → 自适应
 	_signal_dists = PackedFloat32Array()
 	var maxv: float = 0.0
 	for v in dists:
@@ -77,7 +76,6 @@ func add_sample(t_sec: float, dist_m: float) -> void:
 	_samples.append(Vector2(t_sec, dist_m))
 
 	if not _axes_locked:
-		# 未锁 → 跟随数据放大
 		if t_sec > _max_time - 1.0:
 			_max_time = t_sec + 5.0
 		if dist_m > _max_dist - 1.0:
@@ -105,30 +103,21 @@ func _draw() -> void:
 
 	var font: Font = ThemeDB.fallback_font
 
-	# 横轴刻度：每 10s
-	var step_x: float = _min_x_step
+	# —— 横轴刻度：分三档，全覆盖重画 ——
+	var step_x: float = 10.0
+	if _max_time > SPLIT_20_TO_50 + 0.1:
+		step_x = 50.0
+	elif _max_time > SPLIT_10_TO_20 + 0.1:
+		step_x = 20.0
+	# 现在从 0 一路画到 _max_time
 	var t0: float = 0.0
 	while t0 <= _max_time + 0.1:
 		var x_rel: float = (t0 / _max_time) * plot_w
 		var x_pos: float = origin.x + x_rel
-		draw_line(
-			Vector2(x_pos, origin.y),
-			Vector2(x_pos, origin.y + 4.0),
-			Color(1, 1, 1, 0.35),
-			1.0
-		)
-		draw_string(
-			font,
-			Vector2(x_pos - 6.0, origin.y + 16.0),
-			str(int(t0)),
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1.0,
-			12,
-			Color(1, 1, 1, 0.75)
-		)
+		_draw_x_tick(font, x_pos, origin.y, int(t0))
 		t0 += step_x
 
-	# 纵轴刻度：A/B/C/D
+	# —— 纵轴刻度：A/B/C/D —— 
 	for i in range(_signal_dists.size()):
 		var d: float = _signal_dists[i]
 		var y_rel: float = (d / _max_dist) if _max_dist > 1e-6 else 0.0
@@ -153,7 +142,7 @@ func _draw() -> void:
 			Color(1, 1, 1, 0.8)
 		)
 
-	# 曲线
+	# —— 曲线 —— 
 	if _samples.size() >= 2:
 		var pts: PackedVector2Array = PackedVector2Array()
 		for s: Vector2 in _samples:
@@ -168,3 +157,21 @@ func _draw() -> void:
 		var xx0: float = origin.x + (s0.x / _max_time) * plot_w
 		var yy0: float = origin.y - (s0.y / _max_dist) * plot_h
 		draw_circle(Vector2(xx0, yy0), 2.0, Color(0.2, 1.0, 0.3, 0.95))
+
+# 小工具：画一个横轴刻度 + 标签
+func _draw_x_tick(font: Font, x_pos: float, base_y: float, label_val: int) -> void:
+	draw_line(
+		Vector2(x_pos, base_y),
+		Vector2(x_pos, base_y + 4.0),
+		Color(1, 1, 1, 0.35),
+		1.0
+	)
+	draw_string(
+		font,
+		Vector2(x_pos - 6.0, base_y + 16.0),
+		str(label_val),
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1.0,
+		12,
+		Color(1, 1, 1, 0.75)
+	)
