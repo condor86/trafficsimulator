@@ -69,7 +69,7 @@ func _build_nodes() -> void:
 	_speed_input.step = 0.5
 	_speed_input.suffix = " m/s"
 	_speed_input.add_theme_font_size_override("font_size", 22)
-	_speed_input.size = Vector2(110, 28)
+	_speed_input.size = Vector2(110, 28)   # 保证文字不被裁掉
 
 func _bind_signals() -> void:
 	if not _start_button.pressed.is_connected(_on_start_pressed):
@@ -120,7 +120,6 @@ func set_speed_mps(v: float) -> void:
 	_speed_slider.value = c
 	_speed_input.value = c
 
-# ✔ 给下面表格用的：拿到“开始”按钮的 X，用来对齐新按钮
 func get_start_button_x() -> float:
 	if _start_button:
 		return _start_button.position.x

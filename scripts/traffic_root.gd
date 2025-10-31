@@ -71,27 +71,28 @@ func _init_sim() -> void:
 	_sim.set_time_scale(clampf(default_time_scale, 1.0, 15.0))
 
 func _init_ui() -> void:
-	# 1) 显示 / 隐藏下面那张表
 	ui.set_show_light_panels(show_light_panels)
-
-	# 2) 把距离灌进去
 	ui.set_distances_from_root([
 		0.0,
 		dist_B_from_A_m,
 		dist_C_from_A_m,
 		dist_D_from_A_m
 	])
+	# 同步到图表
+	ui.set_plot_signals([
+		0.0,
+		dist_B_from_A_m,
+		dist_C_from_A_m,
+		dist_D_from_A_m
+	])
 
-	# 3) 灯配置
 	var lights = ui.read_all_lights()
 	_sim.apply_lights(lights)
 
-	# 4) 速度 → 不能再碰 ui.speed_slider / ui.speed_input 了
 	var def_spd := clampf(speed_default_mps, speed_min_mps, speed_max_mps)
 	ui.set_speed_mps(def_spd)
 	_sim.set_speed_mps(def_spd)
 
-	# 5) 信号
 	ui.start_pressed.connect(_on_ui_start_pressed)
 	ui.lights_changed.connect(_on_ui_lights_changed)
 	ui.speed_changed.connect(_on_ui_speed_changed)
@@ -135,13 +136,29 @@ func _auto_layout_positions() -> void:
 func _process(delta: float) -> void:
 	if _sim and _sim.running:
 		var r = _sim.step(delta)
+
+		# 计算当前车的“米数”
+		var car_m: float = 0.0
+		if _intersection_positions.size() > 0:
+			car_m = (_sim.car_x - _intersection_positions[0]) / _px_per_meter
+			if car_m < 0.0:
+				car_m = 0.0
+
+		# 推给图表
+		ui.push_plot_sample(_sim.t, car_m)
+
 		if r["finished"]:
 			_finish(true)
+
 	_sync_car_visual()
 	queue_redraw()
 
 func _on_ui_start_pressed() -> void:
 	_apply_ui_to_model()
+	# 图表清空并从 (0,0) 开始
+	ui.reset_plot()
+	ui.push_plot_sample(0.0, 0.0)
+
 	_sim.reset()
 	_sim.set_time_scale(clampf(default_time_scale, 1.0, 15.0))
 	_sim.start()
@@ -168,6 +185,13 @@ func _apply_ui_to_model() -> void:
 
 	var lights = ui.read_all_lights()
 	_sim.apply_lights(lights)
+
+	ui.set_plot_signals([
+		0.0,
+		dist_B_from_A_m,
+		dist_C_from_A_m,
+		dist_D_from_A_m
+	])
 
 	var ui_speed: float = ui.get_speed_mps()
 	_sim.set_speed_mps(clampf(ui_speed, speed_min_mps, speed_max_mps))
