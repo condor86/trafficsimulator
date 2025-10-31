@@ -26,14 +26,12 @@ func _init(owner: Control, min_mps: float, max_mps: float, def_mps: float) -> vo
 	_apply_default_speed()
 
 func _build_nodes() -> void:
-	# 根控件占满，和你原先一样
 	_owner.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_owner.offset_left = 0
 	_owner.offset_top = 0
 	_owner.offset_right = 0
 	_owner.offset_bottom = 0
 
-	# Start
 	_start_button = _owner.get_node_or_null("StartButton") as Button
 	if _start_button == null:
 		_start_button = Button.new()
@@ -43,7 +41,6 @@ func _build_nodes() -> void:
 	_start_button.size = Vector2(160, 48)
 	_start_button.add_theme_font_size_override("font_size", 30)
 
-	# Label
 	_speed_label = _owner.get_node_or_null("SpeedLabel") as Label
 	if _speed_label == null:
 		_speed_label = Label.new()
@@ -53,7 +50,6 @@ func _build_nodes() -> void:
 	_speed_label.modulate = Color(0.2, 0.2, 0.2)
 	_speed_label.add_theme_font_size_override("font_size", 26)
 
-	# Slider
 	_speed_slider = _owner.get_node_or_null("SpeedSlider") as HSlider
 	if _speed_slider == null:
 		_speed_slider = HSlider.new()
@@ -63,7 +59,6 @@ func _build_nodes() -> void:
 	_speed_slider.max_value = _speed_max
 	_speed_slider.step = 0.5
 
-	# SpinBox
 	_speed_input = _owner.get_node_or_null("SpeedInput") as SpinBox
 	if _speed_input == null:
 		_speed_input = SpinBox.new()
@@ -74,7 +69,6 @@ func _build_nodes() -> void:
 	_speed_input.step = 0.5
 	_speed_input.suffix = " m/s"
 	_speed_input.add_theme_font_size_override("font_size", 22)
-	# ✔ 恢复你原来那种宽度，防止“20 m/s”被切掉
 	_speed_input.size = Vector2(110, 28)
 
 func _bind_signals() -> void:
@@ -125,6 +119,12 @@ func set_speed_mps(v: float) -> void:
 	var c := clampf(v, _speed_min, _speed_max)
 	_speed_slider.value = c
 	_speed_input.value = c
+
+# ✔ 给下面表格用的：拿到“开始”按钮的 X，用来对齐新按钮
+func get_start_button_x() -> float:
+	if _start_button:
+		return _start_button.position.x
+	return 0.0
 
 func _on_start_pressed() -> void:
 	emit_signal("start_requested")

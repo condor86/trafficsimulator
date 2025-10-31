@@ -16,12 +16,21 @@ const _ROW_TITLES := [
 ]
 const _COL_TITLES := ["A", "B", "C", "D"]
 
+# 默认值，和你原来的一样
+const DEF_GREEN := [30.0, 30.0, 30.0, 30.0]
+const DEF_RED   := [30.0, 30.0, 30.0, 30.0]
+const DEF_STATE := [0, 1, 1, 1]      # A 绿，BCD 红
+const DEF_ELAP  := [0.0, 0.0, 20.0, 20.0]
+const DEF_DIST  := [0.0, 800.0, 1400.0, 2400.0]
+
 var _owner: Control
 var _panel: Panel
 var _title_bg: ColorRect
 var _title: Label
 var _grid: GridContainer
 var _fields: Array = []     # 5 × 4
+
+var _reset_btn: Button      # 新增按钮
 
 var _table_border: Rect2 = Rect2()
 var _locked: bool = false
@@ -47,7 +56,6 @@ func _build_table() -> void:
 	_panel.name = "LightTable"
 	_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_panel.size = Vector2(420, 210)
-	# 注意：必须挂到 owner 上，否则只看到背景、看不到表格
 	_owner.add_child(_panel)
 
 	_grid = GridContainer.new()
@@ -111,32 +119,16 @@ func _build_table() -> void:
 			row_arr.append(node)
 		_fields.append(row_arr)
 
-	# —— 默认值（和你原来的保持一致） —— 
-	(_fields[0][0] as LineEdit).text = "30"
-	(_fields[1][0] as LineEdit).text = "30"
-	(_fields[2][0] as OptionButton).selected = 0
-	(_fields[3][0] as LineEdit).text = "0"
+	# —— 默认值 —— 
+	_apply_defaults_to_fields()
 
-	(_fields[0][1] as LineEdit).text = "30"
-	(_fields[1][1] as LineEdit).text = "30"
-	(_fields[2][1] as OptionButton).selected = 1
-	(_fields[3][1] as LineEdit).text = "0"
-
-	(_fields[0][2] as LineEdit).text = "30"
-	(_fields[1][2] as LineEdit).text = "30"
-	(_fields[2][2] as OptionButton).selected = 1
-	(_fields[3][2] as LineEdit).text = "20"
-
-	(_fields[0][3] as LineEdit).text = "30"
-	(_fields[1][3] as LineEdit).text = "30"
-	(_fields[2][3] as OptionButton).selected = 1
-	(_fields[3][3] as LineEdit).text = "20"
-
-	var dist_row = _fields[DIST_ROW_IDX]
-	(dist_row[0] as LineEdit).text = "0"
-	(dist_row[1] as LineEdit).text = "800"
-	(dist_row[2] as LineEdit).text = "1400"
-	(dist_row[3] as LineEdit).text = "2400"
+	# —— 新增：重置按钮（先创建，不定位，等 layout_for_intersections 给坐标） —— 
+	_reset_btn = Button.new()
+	_reset_btn.text = "重置红绿灯设置"
+	_reset_btn.size = Vector2(160, 48)
+	_reset_btn.add_theme_font_size_override("font_size", 16)
+	_reset_btn.pressed.connect(_on_reset_pressed)
+	_owner.add_child(_reset_btn)
 
 	_table_border = Rect2(
 		_panel.position.x,
@@ -146,7 +138,7 @@ func _build_table() -> void:
 	)
 	_owner.queue_redraw()
 
-func layout_for_intersections(road_y: float, tick_size: float) -> void:
+func layout_for_intersections(road_y: float, tick_size: float, start_btn_x: float) -> void:
 	if not _panel:
 		return
 	var panel_x: float = 24.0
@@ -161,10 +153,19 @@ func layout_for_intersections(road_y: float, tick_size: float) -> void:
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title.add_theme_color_override("font_color", Color.BLACK)
 
+	# ✔ 新按钮：在表格右边，x 用上面 start 按钮的 x，y 和表格顶对齐
+	if _reset_btn:
+		var btn_x := start_btn_x
+		if btn_x <= 0.0:
+			# 万一拿不到，就放在表格右侧稍微右一点
+			btn_x = panel_x + _panel.size.x + 24.0
+		var btn_y := panel_y
+		_reset_btn.position = Vector2(btn_x, btn_y)
+
 	_table_border = Rect2(Vector2(panel_x, panel_y - 32.0), Vector2(_panel.size.x, _panel.size.y + 32.0))
 	_owner.queue_redraw()
 
-# ✔ 关键点：恢复旧版行为——不管外面传 true/false，都显示
+# 恢复成“永远显示”
 func set_show_light_panels(_show: bool) -> void:
 	if _panel:
 		_panel.visible = true
@@ -172,6 +173,8 @@ func set_show_light_panels(_show: bool) -> void:
 		_title_bg.visible = true
 	if _title:
 		_title.visible = true
+	if _reset_btn:
+		_reset_btn.visible = true
 
 func set_distances_from_root(dists: Array) -> void:
 	if _fields.size() <= DIST_ROW_IDX:
@@ -231,7 +234,10 @@ func set_running(is_running: bool) -> void:
 					le.editable = not is_running
 			elif ctrl is OptionButton:
 				(ctrl as OptionButton).disabled = is_running
+	if _reset_btn:
+		_reset_btn.disabled = is_running
 
+# ——— 信号回调 ———
 func _on_light_line_changed(_t: String, row_idx: int, _col_idx: int) -> void:
 	if _locked:
 		return
@@ -263,6 +269,32 @@ func _on_distance_focus_exited(col_idx: int) -> void:
 	_clamp_single_col(col_idx)
 	_updating = false
 	emit_signal("lights_changed")
+
+# ✔ 新加的：一键恢复
+func _on_reset_pressed() -> void:
+	if _locked:
+		return
+	_updating = true
+	_apply_defaults_to_fields()
+	_updating = false
+	emit_signal("lights_changed")
+
+# —— 工具 —— 
+func _apply_defaults_to_fields() -> void:
+	# 绿/红/状态/初始时间
+	for col in range(4):
+		(_fields[0][col] as LineEdit).text = str(int(DEF_GREEN[col]))
+		(_fields[1][col] as LineEdit).text = str(int(DEF_RED[col]))
+		(_fields[2][col] as OptionButton).selected = DEF_STATE[col]
+		(_fields[3][col] as LineEdit).text = str(DEF_ELAP[col])
+	# 距离
+	var dist_row = _fields[DIST_ROW_IDX]
+	for col in range(4):
+		(dist_row[col] as LineEdit).text = str(roundi(DEF_DIST[col]))
+	# 按各自的列再 clamp 一次，保证合法
+	_clamp_single_col(1)
+	_clamp_single_col(2)
+	_clamp_single_col(3)
 
 func _clamp_single_col(col_idx: int) -> void:
 	if _fields.size() <= DIST_ROW_IDX:

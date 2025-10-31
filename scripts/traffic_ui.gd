@@ -30,14 +30,17 @@ func _ready() -> void:
 	)
 
 func layout_for_intersections(intersections: PackedFloat32Array, road_y: float, tick_size: float) -> void:
+	var start_x: float = 0.0
 	if _topbar:
 		_topbar.layout_for_intersections(intersections, road_y, tick_size)
+		start_x = _topbar.get_start_button_x()
 	if _light_table:
-		_light_table.layout_for_intersections(road_y, tick_size)
+		_light_table.layout_for_intersections(road_y, tick_size, start_x)
 
-func set_show_light_panels(show: bool) -> void:
+func set_show_light_panels(_show: bool) -> void:
+	# 恢复成“永远显示”的行为
 	if _light_table:
-		_light_table.set_show_light_panels(show)
+		_light_table.set_show_light_panels(true)
 
 func set_distances_from_root(dists: Array) -> void:
 	if _light_table:
@@ -64,7 +67,6 @@ func get_speed_mps() -> float:
 		return _topbar.get_speed_mps()
 	return DEFAULT_SPEED
 
-# ✔ 给 root 专用的设置接口，避免它去碰内部节点
 func set_speed_mps(v: float) -> void:
 	if _topbar:
 		_topbar.set_speed_mps(v)
